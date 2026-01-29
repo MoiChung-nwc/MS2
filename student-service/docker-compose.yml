@@ -1,0 +1,29 @@
+version: "3.8"
+services:
+     student-service:
+     build: .
+     container_name: student-service
+     ports:
+          - "9001:9001"
+databases:
+     student-database:
+          image: postgres:15
+          container_name: student-database
+          environment:
+               POSTGRES_DB: student_service
+               POSTGRES_USER: studentuser
+               POSTGRES_PASSWORD: studentpassword
+          ports:
+               - "5433:5433"
+          volumes:
+               - student_db_data:/var/lib/postgresql/data
+          networks:
+               - savvy-global-network
+eruka:
+     client:
+     service-url:
+          defaultZone: http://eureka-server:8761/eureka
+networrks:
+     ecommerce-global-network:
+          external: true
+          name: savvy-global-network

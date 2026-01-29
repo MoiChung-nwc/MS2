@@ -1,0 +1,8 @@
+com\savvy\gateway\filter\AuthenticationFilter.class
+com\savvy\gateway\filter\AuthenticationFilter$Config.class
+com\savvy\gateway\ApiGatewayApplication.class
+com\savvy\gateway\config\GatewayConfig.class
+com\savvy\gateway\controller\GatewayController.class
+com\savvy\gateway\exception\GatewayExceptionHandler.class
+com\savvy\gateway\filter\LoggingFilter.class
+com\savvy\gateway\config\CorsConfig.class

@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+     auth-service:
+          build: .
+          container_name: auth-service
+          ports:
+               - "8081:8081"
+          depends_on:
+               - auth-database
+          networks:
+               - ecommerce-global-network
+eruka:
+     client:
+     service-url:
+          defaultZone: http://eureka-server:8761/eureka
+
+          auth-database:
+               image: postgres:15
+               container_name: auth-database
+               environment:
+                    MYSQL_DATABASE: auth_service
+                    MYSQL_USER: authuser
+                    MYSQL_PASSWORD: authpassword
+               ports:
+                    - "5432:5432"
+               volumes:
+                    - db_data:/var/lib/postgresql/data
+               networks:
+                    - savvy-global-network
+
+volumes:
+     db_data:
+
+networks:
+     savvy-global-network:
+          external: true
+          name: savvy-global-network
