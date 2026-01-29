@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: student-service
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    username: conan09040
+    password: conan14121
+    url: jdbc:postgresql://localhost:5432/student_service
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+server:
+  port: 8082
+  servlet:
+    context-path: /api/v1/
