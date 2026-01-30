@@ -32,6 +32,7 @@ public class GatewayCentralAuthFilter implements GlobalFilter, Ordered {
     private static final String REQUEST_ID_HEADER = "X-Request-ID";
 
     private static final String H_USER_ID = "X-User-Id";
+    private static final String H_STUDENT_ID = "X-Student-Id";
     private static final String H_ROLES = "X-Roles";
     private static final String H_SCHOOL_IDS = "X-School-Ids";
     private static final String H_INTERNAL = "X-Internal-Auth";
@@ -94,9 +95,14 @@ public class GatewayCentralAuthFilter implements GlobalFilter, Ordered {
         final Set<String> roles = new LinkedHashSet<>(asStringList(claims.get("roles")));
         final Set<Long> schoolIds = extractSchoolIds(claims.get("dataScope"));
 
+        final Long studentId = extractStudentId(claims);
+
+        if (roles.contains("STUDENT") && studentId == null) {
+            return writeError(exchange, ErrorCode.TOKEN_INVALID, "Missing studentId claim for STUDENT");
+        }
+
         // ===== RBAC at Gateway (MVP) =====
         if (path.startsWith("/api/v1/students/")) {
-            // cho STUDENT đọc (theo docs scope-filtered)
             if (!hasAnyRole(roles, "ADMIN", "SCHOOL_MANAGER", "STUDENT")) {
                 return writeError(exchange, ErrorCode.FORBIDDEN, "Insufficient role for student-service");
             }
@@ -125,11 +131,15 @@ public class GatewayCentralAuthFilter implements GlobalFilter, Ordered {
                     // Security: strip sensitive headers from client
                     h.remove(HttpHeaders.AUTHORIZATION);
                     h.remove(H_USER_ID);
+                    h.remove(H_STUDENT_ID);
                     h.remove(H_ROLES);
                     h.remove(H_SCHOOL_IDS);
                     h.remove(H_INTERNAL);
 
                     if (StringUtils.hasText(userId)) h.set(H_USER_ID, userId);
+
+                    if (studentId != null) h.set(H_STUDENT_ID, String.valueOf(studentId));
+
                     h.set(H_ROLES, String.join(",", roles));
                     h.set(H_SCHOOL_IDS, joinLongs(schoolIds));
 
@@ -213,6 +223,15 @@ public class GatewayCentralAuthFilter implements GlobalFilter, Ordered {
             }
         }
         return ids;
+    }
+
+    // ✅ NEW: extract studentId claim
+    private Long extractStudentId(Claims claims) {
+        Object v = claims.get("studentId");
+        if (v == null) return null;
+
+        if (v instanceof Number n) return n.longValue();
+        return tryParseLong(String.valueOf(v));
     }
 
     private boolean hasAnyRole(Set<String> roles, String... required) {
