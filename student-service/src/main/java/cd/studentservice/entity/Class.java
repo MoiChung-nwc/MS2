@@ -1,38 +1,34 @@
 package cd.studentservice.entity;
 
-import cd.studentservice.enumerate.StudentStatus;
+import cd.studentservice.enumerate.ClassStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
-import java.time.LocalDate;
 
 @Entity
-@Table(name = "students")
+@Table(name = "classes")
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Student {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+public class Class {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
-
     @Column(unique = true,nullable = false)
     String code;
-
-    String fullName;
-    LocalDate dob;
-    Boolean gender;
+    String name;
+    Integer grade;
     @Enumerated(EnumType.STRING)
-    StudentStatus status;
+    ClassStatus status;
     @CreationTimestamp
     Instant createdAt;
-
     @ManyToOne
-    @JoinColumn(name = "class_id")
-    Class clazz;
+    @JoinColumn(name = "school_id")
+    School school;
 }

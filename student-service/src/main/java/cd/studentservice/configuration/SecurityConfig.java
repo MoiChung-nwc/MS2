@@ -1,6 +1,8 @@
-package com.savvy.gradeservice.config;
+package cd.studentservice.configuration;
 
+import cd.studentservice.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -16,22 +18,14 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
-
     private final JwtAuthenticationFilter jwtAuthFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**", "/error").permitAll()
-                        .anyRequest().permitAll()
-                )
+        http.csrf(AbstractHttpConfigurer::disable)
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         return http.build();
     }
 }

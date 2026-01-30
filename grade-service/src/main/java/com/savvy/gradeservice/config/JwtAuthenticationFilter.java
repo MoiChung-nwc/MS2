@@ -1,10 +1,12 @@
 package com.savvy.gradeservice.config;
 
+import com.savvy.common.exception.ErrorCode;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -15,6 +17,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -22,144 +25,52 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-
+    private static final String H_STUDENT_ID="X-Student-Id";
     private static final String H_USER_ID = "X-User-Id";
-    private static final String H_STUDENT_ID = "X-Student-Id";
     private static final String H_ROLES = "X-Roles";
-    private static final String H_SCHOOL_IDS = "X-School-Ids";
-    private static final String H_PERMISSIONS = "X-Permissions";
-    private static final String H_DATA_SCOPE = "X-Data-Scope";
+    private static final String H_INTERNAL = "X-Internal-Auth";
+
+    @Value("${gateway.internal.secret:}")
+    private String internalSecret;
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.startsWith("/api/v1/students/");
+    }
 
     @Override
     protected void doFilterInternal(
-            @NonNull HttpServletRequest request,
-            @NonNull HttpServletResponse response,
-            @NonNull FilterChain filterChain
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain
     ) throws ServletException, IOException {
-
-        final String userIdStr = request.getHeader(H_USER_ID);
-        final String studentIdStr = request.getHeader(H_STUDENT_ID);
-        final String rolesStr = request.getHeader(H_ROLES);
-        final String schoolIdsStr = request.getHeader(H_SCHOOL_IDS);
-        final String permissionsStr = request.getHeader(H_PERMISSIONS);
-        final String dataScopeStr = request.getHeader(H_DATA_SCOPE);
-
-        logger.info("JWT Headers - UserId: " + userIdStr
-                + ", StudentId: " + studentIdStr
-                + ", Roles: " + rolesStr
-                + ", SchoolIds: " + schoolIdsStr
-                + ", Permissions: " + permissionsStr
-                + ", DataScope: " + dataScopeStr);
-
-        // Không có X-User-Id => coi như anonymous (public) hoặc request không đi qua gateway
-        if (!StringUtils.hasText(userIdStr)) {
-            logger.warn("No X-User-Id header found, skipping authentication");
-            filterChain.doFilter(request, response);
+        String secret = request.getHeader(H_INTERNAL);
+        if(!StringUtils.hasText(internalSecret) || !internalSecret.equals(secret)) {
+            response.setStatus(ErrorCode.UNAUTHORIZED.getHttpStatus().value());
+            response.setContentType("application/json");
+            response.getWriter().write("{\"success\":false,\"status\":401,\"message\":\"Missing/invalid internal auth\"}");
             return;
         }
 
-        try {
-            Long userId = Long.parseLong(userIdStr);
+        String userId = request.getHeader(H_USER_ID);
+        String roleHeader = request.getHeader(H_ROLES);
+        String studentId=request.getHeader(H_STUDENT_ID);
 
-            List<String> roles = parseCommaSeparated(rolesStr);
-            List<Long> schoolIds = parseSchoolIds(schoolIdsStr);
-            List<String> permissions = parseCommaSeparated(permissionsStr);
-            List<Long> dataScopeSchoolIds = parseDataScopeSchoolIds(dataScopeStr);
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
 
-            Long studentId = parseNullableLong(studentIdStr);
-
-            if (roles.contains("STUDENT") && studentId == null) {
-                logger.warn("Role STUDENT but missing X-Student-Id header. Skip authentication for safety.");
-                filterChain.doFilter(request, response);
-                return;
+        if(StringUtils.hasText(roleHeader)) {
+            for (String r : roleHeader.split(",")) {
+                String role = r.trim();
+                if(!role.isEmpty()) {
+                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                }
             }
-
-            // Set user context
-            UserContext userContext = new UserContext();
-            userContext.setUserId(userId);
-            userContext.setUsername(userIdStr); // still keep principal identity = sub
-
-            userContext.setStudentId(studentId);
-
-            userContext.setRoles(roles);
-            userContext.setSchoolIds(schoolIds);
-            userContext.setPermissions(permissions);
-            userContext.setDataScopeSchoolIds(dataScopeSchoolIds);
-            UserContext.set(userContext);
-
-            logger.info("UserContext set - UserId: " + userContext.getUserId()
-                    + ", StudentId: " + userContext.getStudentId()
-                    + ", Roles: " + userContext.getRoles()
-                    + ", Permissions: " + userContext.getPermissions()
-                    + ", DataScopeSchoolIds: " + userContext.getDataScopeSchoolIds());
-
-            List<SimpleGrantedAuthority> authorities = roles.stream()
-                    .map(SimpleGrantedAuthority::new)
-                    .toList();
-
-            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                    userIdStr, // principal = userIdStr (sub)
-                    null,
-                    authorities
-            );
-            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authToken);
-
-        } catch (Exception e) {
-            logger.error("Failed to process gateway headers", e);
         }
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
+
+        SecurityContextHolder.getContext().setAuthentication(auth);
 
         filterChain.doFilter(request, response);
-    }
-
-    private List<String> parseCommaSeparated(String value) {
-        if (!StringUtils.hasText(value)) return List.of();
-        return Arrays.stream(value.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
-    }
-
-    private List<Long> parseSchoolIds(String value) {
-        if (!StringUtils.hasText(value)) return List.of();
-        return Arrays.stream(value.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(Long::parseLong)
-                .collect(Collectors.toList());
-    }
-
-    private Long parseNullableLong(String value) {
-        if (!StringUtils.hasText(value)) return null;
-        try {
-            return Long.parseLong(value.trim());
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private List<Long> parseDataScopeSchoolIds(String dataScopeStr) {
-        if (!StringUtils.hasText(dataScopeStr)) {
-            return List.of();
-        }
-        try {
-            // Parse JSON like {"schoolIds":[1,2,3]} and extract schoolIds array
-            String schoolIdsJson = dataScopeStr.replaceAll(".*\"schoolIds\":\\[([^\\]]+)\\].*", "$1");
-            if (schoolIdsJson.equals(dataScopeStr)) {
-                return List.of(); // No match found
-            }
-            return Arrays.stream(schoolIdsJson.split(","))
-                    .map(String::trim)
-                    .map(Long::parseLong)
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            logger.warn("Failed to parse dataScope: " + dataScopeStr, e);
-            return List.of();
-        }
-    }
-
-    @Override
-    public void destroy() {
-        UserContext.clear();
     }
 }
